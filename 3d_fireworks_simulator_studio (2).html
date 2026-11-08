@@ -1,0 +1,2284 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PyroLux 3D — Interactive Fireworks Simulator</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- ES Module Import Map for Three.js r160 -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #02040a;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #f8fafc;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      cursor: crosshair;
+    }
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom Glassmorphism & Scrollbar */
+    .glass-panel {
+      background: rgba(10, 14, 26, 0.78);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 9999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.35);
+      border-radius: 9999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.6);
+    }
+    /* Custom Range Sliders */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: rgba(30, 41, 59, 0.9);
+      border-radius: 999px;
+      outline: none;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+      transition: transform 0.15s ease, background-color 0.15s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      background: #7dd3fc;
+    }
+    /* Custom Color Picker Input */
+    input[type="color"] {
+      -webkit-appearance: none;
+      appearance: none;
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      background: transparent;
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch {
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 7px;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 15px rgba(244, 63, 94, 0.5), inset 0 0 10px rgba(251, 113, 133, 0.3); }
+      50% { box-shadow: 0 0 28px rgba(244, 63, 94, 0.9), inset 0 0 15px rgba(251, 113, 133, 0.6); }
+    }
+    .finale-btn-glow {
+      animation: pulseGlow 2.2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 3D WebGL Canvas Mount -->
+  <div id="canvas-container" aria-label="Interactive 3D Fireworks Sky"></div>
+
+  <!-- Top Telemetry & Quick Action Bar -->
+  <header class="fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+    <!-- Brand & Live Telemetry -->
+    <div class="glass-panel rounded-2xl px-4 py-2.5 flex items-center gap-4 pointer-events-auto">
+      <div class="flex items-center gap-2.5">
+        <div class="w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_12px_#22d3ee] animate-pulse"></div>
+        <div>
+          <h1 class="text-sm font-bold tracking-wider uppercase bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-amber-200 bg-clip-text text-transparent">
+            PyroLux 3D
+          </h1>
+          <p class="text-[10px] text-slate-400 hidden sm:block">Click or tap sky to launch • Drag to orbit</p>
+        </div>
+      </div>
+
+      <div class="h-6 w-px bg-slate-700/70"></div>
+
+      <!-- Real-time Counters -->
+      <div class="flex items-center gap-3 text-xs font-mono-tech">
+        <div class="flex flex-col">
+          <span class="text-[9px] uppercase text-slate-400">FPS</span>
+          <span id="hud-fps" class="text-emerald-400 font-semibold">60</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[9px] uppercase text-slate-400">Shells</span>
+          <span id="hud-shells" class="text-cyan-300 font-semibold">0</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[9px] uppercase text-slate-400">Sparks</span>
+          <span id="hud-particles" class="text-amber-300 font-semibold">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Right Quick Controls -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <button id="btn-quick-launch" title="Launch Single Firework (Spacebar)"
+        class="glass-panel hover:bg-slate-800/80 active:scale-95 transition-all rounded-xl px-3.5 py-2 text-xs font-semibold text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 shadow-lg">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        <span>Launch</span>
+      </button>
+
+      <button id="btn-finale-top" title="Trigger Grand Finale Barrage (F)"
+        class="finale-btn-glow bg-gradient-to-r from-rose-600 via-pink-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 active:scale-95 transition-all rounded-xl px-3.5 py-2 text-xs font-bold text-white flex items-center gap-1.5 shadow-lg">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+        </svg>
+        <span>Grand Finale</span>
+      </button>
+
+      <button id="btn-audio-toggle" title="Toggle Synthesized Sound Effects (M)"
+        class="glass-panel hover:bg-slate-800/80 active:scale-95 transition-all rounded-xl p-2 text-slate-200 border border-slate-700/60">
+        <svg id="icon-audio-on" class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+        </svg>
+        <svg id="icon-audio-off" class="w-4 h-4 text-rose-400 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+        </svg>
+      </button>
+
+      <button id="btn-toggle-panel" title="Toggle Studio Panel (H)"
+        class="glass-panel hover:bg-slate-800/80 active:scale-95 transition-all rounded-xl px-3 py-2 text-xs font-medium text-slate-200 flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+        </svg>
+        <span id="toggle-panel-text" class="hidden sm:inline">Studio Controls</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Control Panel Drawer (Right Side) -->
+  <aside id="control-panel"
+    class="fixed top-16 right-3 bottom-3 w-80 sm:w-96 z-20 glass-panel rounded-2xl flex flex-col overflow-hidden transition-all duration-300 ease-out">
+    
+    <!-- Panel Header & Category Tabs -->
+    <div class="p-3.5 border-b border-slate-800/80 flex flex-col gap-2.5 bg-slate-950/40">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-fuchsia-400"></span>
+          Pyrotechnics Control Studio
+        </span>
+        <button id="btn-reset-camera" class="text-[11px] text-cyan-400 hover:text-cyan-300 transition underline">
+          Reset Camera
+        </button>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="grid grid-cols-4 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800/70 text-[11px] font-medium">
+        <button data-tab="tab-shells" class="tab-btn py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 transition">
+          Shells
+        </button>
+        <button data-tab="tab-colors" class="tab-btn py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition">
+          Colors
+        </button>
+        <button data-tab="tab-physics" class="tab-btn py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition">
+          Physics
+        </button>
+        <button data-tab="tab-fx" class="tab-btn py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition">
+          Bloom & Audio
+        </button>
+      </div>
+    </div>
+
+    <!-- Scrollable Tab Content Area -->
+    <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-5 text-xs">
+
+      <!-- TAB 1: SHELLS & AUTO-SHOW -->
+      <div id="tab-shells" class="tab-content space-y-4">
+        <!-- Auto-Show Toggle Card -->
+        <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-slate-100">Auto-Show Choreography</div>
+              <div class="text-[11px] text-slate-400">Continuous automated aerial display</div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="chk-autoshow" class="sr-only peer" checked>
+              <div class="w-10 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500"></div>
+            </label>
+          </div>
+
+          <!-- Launch Frequency Slider -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-400">Show Pace (Shells / sec)</span>
+              <span id="val-frequency" class="font-mono-tech text-cyan-300">1.8 /s</span>
+            </div>
+            <input type="range" id="rng-frequency" min="0.3" max="5.0" step="0.1" value="1.8">
+          </div>
+
+          <!-- Launch Spread Slider -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-400">Bay Launch Spread</span>
+              <span id="val-spread" class="font-mono-tech text-cyan-300">110 m</span>
+            </div>
+            <input type="range" id="rng-spread" min="30" max="200" step="5" value="110">
+          </div>
+        </div>
+
+        <!-- Shell Type Selector -->
+        <div class="space-y-2">
+          <label class="block font-semibold text-slate-200">Aerial Shell Architecture</label>
+          <div class="grid grid-cols-2 gap-2" id="shell-type-grid">
+            <button data-shell="random" class="shell-btn p-2.5 rounded-xl border border-cyan-500/50 bg-cyan-500/15 text-left transition">
+              <div class="font-semibold text-cyan-300">🎲 Mixed Show</div>
+              <div class="text-[10px] text-slate-400">All shell variations</div>
+            </button>
+            <button data-shell="peony" class="shell-btn p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+              <div class="font-semibold text-slate-200">🌸 Peony</div>
+              <div class="text-[10px] text-slate-400">Clean spherical bloom</div>
+            </button>
+            <button data-shell="chrysanthemum" class="shell-btn p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+              <div class="font-semibold text-slate-200">✴️ Chrysanthemum</div>
+              <div class="text-[10px] text-slate-400">Dense lingering trails</div>
+            </button>
+            <button data-shell="willow" class="shell-btn p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+              <div class="font-semibold text-slate-200">🌿 Willow Kamuro</div>
+              <div class="text-[10px] text-slate-400">Long weeping tendrils</div>
+            </button>
+            <button data-shell="saturn" class="shell-btn p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+              <div class="font-semibold text-slate-200">🪐 Ring / Saturn</div>
+              <div class="text-[10px] text-slate-400">Planar ring + core</div>
+            </button>
+            <button data-shell="crossette" class="shell-btn p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+              <div class="font-semibold text-slate-200">✨ Crossette Crackle</div>
+              <div class="text-[10px] text-slate-400">Secondary sub-bursts</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Explosion Scale & Particle Density -->
+        <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-3">
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Explosion Radius / Power</span>
+              <span id="val-size" class="font-mono-tech text-cyan-300">1.15x</span>
+            </div>
+            <input type="range" id="rng-size" min="0.5" max="2.2" step="0.05" value="1.15">
+          </div>
+
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Particles per Shell</span>
+              <span id="val-count" class="font-mono-tech text-cyan-300">750</span>
+            </div>
+            <input type="range" id="rng-count" min="200" max="2000" step="50" value="750">
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: COLOR CUSTOMIZATION -->
+      <div id="tab-colors" class="tab-content hidden space-y-4">
+        <!-- Color Mode Selector -->
+        <div class="space-y-2">
+          <label class="block font-semibold text-slate-200">Chromatic Synthesis Mode</label>
+          <select id="sel-colormode"
+            class="w-full rounded-xl bg-slate-900 border border-slate-700/80 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-400">
+            <option value="transition" selected>🌈 Lifespan Shift (Primary → Secondary → Sparks)</option>
+            <option value="duo">🌗 Two-Tone Duo (Core vs. Outer Tips)</option>
+            <option value="rainbow">✨ Prismatic Rainbow Spectrum</option>
+            <option value="monochrome">🎯 Monochrome Pure Hue</option>
+          </select>
+        </div>
+
+        <!-- Active Theme Banner -->
+        <div class="p-3 rounded-xl bg-slate-900/90 border border-cyan-500/30 space-y-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <span id="active-theme-name" class="font-bold text-cyan-300 text-xs truncate">Aurora Borealis</span>
+            <span id="active-theme-category" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shrink-0">Atmospheric & Celestial</span>
+          </div>
+          <p id="active-theme-vibe" class="text-[11px] text-slate-400 leading-relaxed">
+            Shifting polar ribbons of ethereal cold greens and violet-magenta.
+          </p>
+        </div>
+
+        <!-- Custom Hex/RGB Pickers -->
+        <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-2.5">
+          <div class="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">4-Channel Luminescence Pickers</div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-slate-200 font-medium">Core / Burst Flash</div>
+              <div id="hex-flash" class="text-[10px] font-mono-tech text-slate-400">#E0FFF4</div>
+            </div>
+            <input type="color" id="col-flash" value="#e0fff4">
+          </div>
+          
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-slate-200 font-medium">Primary Tendril</div>
+              <div id="hex-primary" class="text-[10px] font-mono-tech text-slate-400">#00FFA3</div>
+            </div>
+            <input type="color" id="col-primary" value="#00ffa3">
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-slate-200 font-medium">Secondary / Fade</div>
+              <div id="hex-secondary" class="text-[10px] font-mono-tech text-slate-400">#00C2FF</div>
+            </div>
+            <input type="color" id="col-secondary" value="#00c2ff">
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-slate-200 font-medium">Lingering Sparks & Trail</div>
+              <div id="hex-spark" class="text-[10px] font-mono-tech text-slate-400">#9D00FF</div>
+            </div>
+            <input type="color" id="col-spark" value="#9d00ff">
+          </div>
+        </div>
+
+        <!-- Curated 30 Palette Presets -->
+        <div class="space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-slate-200">30 Atmospheric Themes</span>
+            <label class="flex items-center gap-1.5 text-[11px] text-cyan-300 cursor-pointer">
+              <input type="checkbox" id="chk-random-palette" class="rounded bg-slate-800 border-slate-600 text-cyan-500" checked>
+              <span>Auto-Cycle Themes</span>
+            </label>
+          </div>
+
+          <!-- Category Filter -->
+          <select id="sel-theme-category"
+            class="w-full rounded-xl bg-slate-900 border border-slate-700/80 px-3 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-cyan-400">
+            <option value="all" selected>All 30 Curated Themes (6 Categories)</option>
+            <option value="Atmospheric & Celestial">🌌 Atmospheric & Celestial (6)</option>
+            <option value="Organic, Minerals & Elements">💎 Organic, Minerals & Elements (8)</option>
+            <option value="Cyberpunk, Synthwave & Neo-Tokyo">🌆 Cyberpunk, Synthwave & Neo-Tokyo (5)</option>
+            <option value="Botanical & Natural Moods">🌸 Botanical & Natural Moods (4)</option>
+            <option value="Festive, Regal & Modern Luxury">👑 Festive, Regal & Modern Luxury (4)</option>
+            <option value="Sweet, Confectionery & Playful">🍬 Sweet, Confectionery & Playful (3)</option>
+          </select>
+
+          <!-- Dynamic Theme Buttons Container -->
+          <div class="grid grid-cols-1 gap-1.5 max-h-64 overflow-y-auto custom-scroll pr-1" id="palette-presets"></div>
+        </div>
+      </div>
+
+      <!-- TAB 3: PHYSICS & ENVIRONMENT -->
+      <div id="tab-physics" class="tab-content hidden space-y-4">
+        <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-3">
+          <!-- Gravity -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Gravity Acceleration</span>
+              <span id="val-gravity" class="font-mono-tech text-cyan-300">9.8 m/s²</span>
+            </div>
+            <input type="range" id="rng-gravity" min="2.0" max="22.0" step="0.5" value="9.8">
+          </div>
+
+          <!-- Air Drag -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Atmospheric Drag (Resistance)</span>
+              <span id="val-drag" class="font-mono-tech text-cyan-300">0.982</span>
+            </div>
+            <input type="range" id="rng-drag" min="0.950" max="0.995" step="0.001" value="0.982">
+          </div>
+
+          <!-- Trail Persistence -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Spark Trail Length</span>
+              <span id="val-trail-len" class="font-mono-tech text-cyan-300">1.2x</span>
+            </div>
+            <input type="range" id="rng-trail-len" min="0.4" max="2.5" step="0.1" value="1.2">
+          </div>
+
+          <!-- Wind Drift -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Crosswind Breeze</span>
+              <span id="val-wind" class="font-mono-tech text-cyan-300">1.5 m/s</span>
+            </div>
+            <input type="range" id="rng-wind" min="-10.0" max="10.0" step="0.5" value="1.5">
+          </div>
+        </div>
+
+        <!-- Scene & Camera Options -->
+        <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-200 font-medium">Lake Water Reflections</span>
+            <input type="checkbox" id="chk-reflections" class="rounded bg-slate-800 border-slate-600 text-cyan-500" checked>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-200 font-medium">Cinematic Camera Orbit</span>
+            <input type="checkbox" id="chk-autorotate" class="rounded bg-slate-800 border-slate-600 text-cyan-500">
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: POST-PROCESSING BLOOM & AUDIO -->
+      <div id="tab-fx" class="tab-content hidden space-y-4">
+        <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-3">
+          <div class="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">UnrealBloom Post-Processing</div>
+
+          <!-- Bloom Strength -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Bloom Glow Intensity</span>
+              <span id="val-bloom-strength" class="font-mono-tech text-cyan-300">1.65</span>
+            </div>
+            <input type="range" id="rng-bloom-strength" min="0.0" max="3.5" step="0.05" value="1.65">
+          </div>
+
+          <!-- Bloom Radius -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Bloom Diffusion Radius</span>
+              <span id="val-bloom-radius" class="font-mono-tech text-cyan-300">0.65</span>
+            </div>
+            <input type="range" id="rng-bloom-radius" min="0.0" max="1.2" step="0.05" value="0.65">
+          </div>
+
+          <!-- Bloom Threshold -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Luminance Threshold</span>
+              <span id="val-bloom-thresh" class="font-mono-tech text-cyan-300">0.12</span>
+            </div>
+            <input type="range" id="rng-bloom-thresh" min="0.0" max="0.9" step="0.02" value="0.12">
+          </div>
+        </div>
+
+        <!-- Synthesized Web Audio Synthesizer Controls -->
+        <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-slate-200">Web Audio Synthesizer</div>
+              <div class="text-[10px] text-slate-400">Procedural whistles, mortar thuds & crackles</div>
+            </div>
+            <input type="checkbox" id="chk-sound" class="rounded bg-slate-800 border-slate-600 text-cyan-500" checked>
+          </div>
+
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-slate-300 font-medium">Master Acoustic Volume</span>
+              <span id="val-volume" class="font-mono-tech text-cyan-300">70%</span>
+            </div>
+            <input type="range" id="rng-volume" min="0" max="100" step="1" value="70">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Panel Footer Action -->
+    <div class="p-3 border-t border-slate-800/80 bg-slate-950/60 flex items-center gap-2">
+      <button id="btn-finale-bottom"
+        class="w-full py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-gradient-to-r from-rose-600 via-fuchsia-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 active:scale-[0.99] transition shadow-lg flex items-center justify-center gap-2">
+        <span>🎆 Trigger Grand Finale Barrage</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Interactive Hint Banner (Bottom Left) -->
+  <div class="fixed bottom-3 left-3 z-10 pointer-events-none hidden sm:flex items-center gap-2 glass-panel px-3.5 py-2 rounded-xl text-[11px] text-slate-300">
+    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+    <span><b>Click / Tap</b> anywhere in the 3D sky to aim & launch a custom shell • <b>Space</b> Quick Launch • <b>F</b> Finale</span>
+  </div>
+
+  <!-- Application Script -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    /* ==========================================================================
+       1. 30 CURATED ATMOSPHERIC FIREWORK COLOR THEMES & CONFIGURATION
+       ========================================================================== */
+    const FIREWORK_THEMES = {
+      // --- Atmospheric & Celestial ---
+      aurora: {
+        name: "Aurora Borealis",
+        category: "Atmospheric & Celestial",
+        vibe: "Shifting polar ribbons of ethereal cold greens and violet-magenta.",
+        flash: "#E0FFF4",
+        primary: "#00FFA3",
+        secondary: "#00C2FF",
+        sparks: "#9D00FF"
+      },
+      cosmicNebula: {
+        name: "Cosmic Nebula",
+        category: "Atmospheric & Celestial",
+        vibe: "Deep-space interstellar cloud glow with hot stellar centers.",
+        flash: "#FFFFFF",
+        primary: "#FF2A85",
+        secondary: "#7B2CBF",
+        sparks: "#3A86FF"
+      },
+      solarFlare: {
+        name: "Solar Flare",
+        category: "Atmospheric & Celestial",
+        vibe: "Blinding coronal mass ejections with superheated plasma hues.",
+        flash: "#FFFCE1",
+        primary: "#FFE600",
+        secondary: "#FF5E00",
+        sparks: "#D00000"
+      },
+      starlightVoid: {
+        name: "Starlight Void",
+        category: "Atmospheric & Celestial",
+        vibe: "Crisp, icy monochromatic elegance reminiscent of deep space diamond dust.",
+        flash: "#FFFFFF",
+        primary: "#D8ECF8",
+        secondary: "#7AA9C7",
+        sparks: "#3E5C76"
+      },
+      eclipseCorona: {
+        name: "Eclipse Corona",
+        category: "Atmospheric & Celestial",
+        vibe: "The rim of a dark moon hiding blinding silver-gold radiance.",
+        flash: "#FFF8DC",
+        primary: "#E5C158",
+        secondary: "#8C7853",
+        sparks: "#2D2327"
+      },
+      martianTwilight: {
+        name: "Martian Twilight",
+        category: "Atmospheric & Celestial",
+        vibe: "Dust storms scattering sunset rays over rusty valleys.",
+        flash: "#FFD6A5",
+        primary: "#FF7B54",
+        secondary: "#BD4B4B",
+        sparks: "#6B2D5C"
+      },
+
+      // --- Organic, Minerals & Elements ---
+      kamuro: {
+        name: "Kamuro Imperial Gold",
+        category: "Organic, Minerals & Elements",
+        vibe: "Classic Japanese golden weeping willows that linger across the sky.",
+        flash: "#FFFDF0",
+        primary: "#FFD700",
+        secondary: "#FFA000",
+        sparks: "#CC7A00"
+      },
+      bioluminescentLagoon: {
+        name: "Bioluminescent Lagoon",
+        category: "Organic, Minerals & Elements",
+        vibe: "Disturbed nocturnal tides glowing with micro-organism luminescence.",
+        flash: "#D4FFFA",
+        primary: "#00FFCC",
+        secondary: "#0582CA",
+        sparks: "#003554"
+      },
+      volcanicBasalt: {
+        name: "Volcanic Basalt",
+        category: "Organic, Minerals & Elements",
+        vibe: "Ripped magma fissures crusting over as cooling embers drift down.",
+        flash: "#FFF0A5",
+        primary: "#FF3F00",
+        secondary: "#8B0000",
+        sparks: "#2B2B2B"
+      },
+      ghostFire: {
+        name: "Ghost Fire / Phosphor",
+        category: "Organic, Minerals & Elements",
+        vibe: "Uncanny, supernatural green flames seen hovering over marshes.",
+        flash: "#F0FFF0",
+        primary: "#70FF00",
+        secondary: "#00A86B",
+        sparks: "#004B23"
+      },
+      amethystGeode: {
+        name: "Amethyst Geode",
+        category: "Organic, Minerals & Elements",
+        vibe: "Fractured crystalline mineral veins sparkling with multifaceted purples.",
+        flash: "#F9F0FF",
+        primary: "#C77DFF",
+        secondary: "#7B1FA2",
+        sparks: "#3C096C"
+      },
+      copperOxidation: {
+        name: "Copper Oxidation (Verdigris)",
+        category: "Organic, Minerals & Elements",
+        vibe: "Bright warm copper sparks evolving into cool patinated turquoise trails.",
+        flash: "#FFE0B2",
+        primary: "#E07A5F",
+        secondary: "#2A9D8F",
+        sparks: "#264653"
+      },
+      roseQuartzOpal: {
+        name: "Rose Quartz & Opal",
+        category: "Organic, Minerals & Elements",
+        vibe: "Dreamy, iridescent pastel reflections with a high-glow soft aesthetic.",
+        flash: "#FFFFFF",
+        primary: "#F72585",
+        secondary: "#7209B7",
+        sparks: "#4CC9F0"
+      },
+      glacialFjord: {
+        name: "Glacial Fjord",
+        category: "Organic, Minerals & Elements",
+        vibe: "Piercing crystalline blue ice cracking over chilled, deep water.",
+        flash: "#E0F7FA",
+        primary: "#00E5FF",
+        secondary: "#0077B6",
+        sparks: "#03045E"
+      },
+
+      // --- Cyberpunk, Synthwave & Neo-Tokyo ---
+      cyberpunk: {
+        name: "Cyberpunk 2099",
+        category: "Cyberpunk, Synthwave & Neo-Tokyo",
+        vibe: "Wet asphalt reflecting neon billboards in a high-tech dystopia.",
+        flash: "#00FFFF",
+        primary: "#FF007F",
+        secondary: "#FFE600",
+        sparks: "#1A0B2E"
+      },
+      synthwaveSunset: {
+        name: "Synthwave Sunset",
+        category: "Cyberpunk, Synthwave & Neo-Tokyo",
+        vibe: "80s wireframe grid sunsets, palm tree silhouettes, and chrome highlights.",
+        flash: "#FFE3E3",
+        primary: "#FF0055",
+        secondary: "#FF8800",
+        sparks: "#5A189A"
+      },
+      tokyoDriftArcade: {
+        name: "Tokyo Drift Arcade",
+        category: "Cyberpunk, Synthwave & Neo-Tokyo",
+        vibe: "Pachinko parlor light trails and underglow racing neon.",
+        flash: "#FFFFFF",
+        primary: "#39FF14",
+        secondary: "#FF073A",
+        sparks: "#00F0FF"
+      },
+      glitchMatrix: {
+        name: "Glitch Matrix",
+        category: "Cyberpunk, Synthwave & Neo-Tokyo",
+        vibe: "Cascading terminal code characters breaking through a monochrome barrier.",
+        flash: "#EAFFEA",
+        primary: "#00FF41",
+        secondary: "#008F11",
+        sparks: "#003B00"
+      },
+      vaporwaveDream: {
+        name: "Vaporwave Dream",
+        category: "Cyberpunk, Synthwave & Neo-Tokyo",
+        vibe: "Pastel marble busts, Arizona green tea graphics, and nostalgic Windows 95 gradients.",
+        flash: "#FFF1FE",
+        primary: "#FF99C8",
+        secondary: "#D0F4DE",
+        sparks: "#A9DEF9"
+      },
+
+      // --- Botanical & Natural Moods ---
+      sakuraBlizzard: {
+        name: "Sakura Blizzard (Cherry Blossom)",
+        category: "Botanical & Natural Moods",
+        vibe: "Swirling pink petals drifting through crisp spring evening air.",
+        flash: "#FFF5F7",
+        primary: "#FFB7C5",
+        secondary: "#E85D75",
+        sparks: "#8A3B47"
+      },
+      enchantedForest: {
+        name: "Enchanted Forest",
+        category: "Botanical & Natural Moods",
+        vibe: "Ancient moss-covered groves illuminated by firefly swarms.",
+        flash: "#F1FFE7",
+        primary: "#55A630",
+        secondary: "#9EF01A",
+        sparks: "#D4A373"
+      },
+      autumnEquinox: {
+        name: "Autumn Equinox",
+        category: "Botanical & Natural Moods",
+        vibe: "Falling oak and maple leaves during golden hour.",
+        flash: "#FFF3CD",
+        primary: "#E36414",
+        secondary: "#9A031E",
+        sparks: "#5F0F40"
+      },
+      midnightOrchid: {
+        name: "Midnight Orchid",
+        category: "Botanical & Natural Moods",
+        vibe: "Rare tropical jungle blossoms opening only under a crescent moon.",
+        flash: "#F3E8FF",
+        primary: "#9B5DE5",
+        secondary: "#F15BB5",
+        sparks: "#1E0038"
+      },
+
+      // --- Festive, Regal & Modern Luxury ---
+      sovereignChampagne: {
+        name: "Sovereign Champagne",
+        category: "Festive, Regal & Modern Luxury",
+        vibe: "VIP gala celebrations with fine effervescent crystal bubbles.",
+        flash: "#FFFFFF",
+        primary: "#F4E285",
+        secondary: "#C5A059",
+        sparks: "#8C7243"
+      },
+      velvetBurgundyGold: {
+        name: "Velvet Burgundy & Gold",
+        category: "Festive, Regal & Modern Luxury",
+        vibe: "Operatic curtain calls, regal heraldry, and baroque decadence.",
+        flash: "#FFF8DC",
+        primary: "#720026",
+        secondary: "#CE9338",
+        sparks: "#4F0014"
+      },
+      desertMirage: {
+        name: "Desert Mirage",
+        category: "Festive, Regal & Modern Luxury",
+        vibe: "Shimmering heat mirages over windblown Sahara sand dunes.",
+        flash: "#FFF6E5",
+        primary: "#E76F51",
+        secondary: "#F4A261",
+        sparks: "#264653"
+      },
+      nordicWinterSolstice: {
+        name: "Nordic Winter Solstice",
+        category: "Festive, Regal & Modern Luxury",
+        vibe: "Warm candle hearth glowing against blue polar snow drifts.",
+        flash: "#FFFFFF",
+        primary: "#48CAE4",
+        secondary: "#F39A59",
+        sparks: "#023E8A"
+      },
+
+      // --- Sweet, Confectionery & Playful ---
+      cottonCandyCarnival: {
+        name: "Cotton Candy Carnival",
+        category: "Sweet, Confectionery & Playful",
+        vibe: "Spun sugar and spun glass under vibrant fairground Ferris wheel lights.",
+        flash: "#FFFFFF",
+        primary: "#FF70A6",
+        secondary: "#70D6FF",
+        sparks: "#FFD670"
+      },
+      matchaWhiteChocolate: {
+        name: "Matcha & White Chocolate",
+        category: "Sweet, Confectionery & Playful",
+        vibe: "Creamy gourmet confection balancing earthy tea tones with rich cream.",
+        flash: "#FFFFFA",
+        primary: "#8FA382",
+        secondary: "#C5D86D",
+        sparks: "#58641D"
+      },
+      rainbowPrismatic: {
+        name: "Rainbow Prismatic Overdrive",
+        category: "Sweet, Confectionery & Playful",
+        vibe: "High-energy festival finale cycling across every saturated spectral wavelength.",
+        flash: "#FFFFFF",
+        primary: "#FF0044",
+        primaryAlt: "#00E5FF",
+        secondary: "#FFEE00",
+        secondaryAlt: "#A100FF",
+        sparks: "#00FF66"
+      }
+    };
+
+    const THEME_KEYS = Object.keys(FIREWORK_THEMES);
+
+    const CONFIG = {
+      autoShow: true,
+      launchFrequency: 1.8,      // shells per second in auto mode
+      launchSpread: 110,         // horizontal spread across launch bay
+      shellType: 'random',       // 'random' | 'peony' | 'chrysanthemum' | 'willow' | 'saturn' | 'crossette'
+      explosionSize: 1.15,
+      particleCount: 750,
+      colorMode: 'transition',   // 'transition' | 'duo' | 'rainbow' | 'monochrome'
+      activeThemeKey: 'aurora',
+      flashColor: '#E0FFF4',
+      primaryColor: '#00FFA3',
+      secondaryColor: '#00C2FF',
+      sparkColor: '#9D00FF',
+      primaryAltColor: null,
+      secondaryAltColor: null,
+      autoCyclePalettes: true,
+      gravity: 9.8,
+      drag: 0.982,
+      trailLength: 1.2,
+      wind: 1.5,
+      waterReflections: true,
+      autoRotate: false,
+      bloomStrength: 1.65,
+      bloomRadius: 0.65,
+      bloomThreshold: 0.12,
+      soundEnabled: true,
+      volume: 0.70
+    };
+
+    /* ==========================================================================
+       2. PROCEDURAL WEB AUDIO SYNTHESIZER (Zero External Assets)
+       ========================================================================== */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.noiseBuffer = null;
+        this.masterGain = null;
+      }
+
+      init() {
+        if (this.ctx) {
+          if (this.ctx.state === 'suspended') this.ctx.resume();
+          return;
+        }
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        this.ctx = new AudioCtx();
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = CONFIG.soundEnabled ? CONFIG.volume : 0;
+        this.masterGain.connect(this.ctx.destination);
+
+        // Pre-generate 2 seconds of white noise for realistic explosions & crackles
+        const sampleRate = this.ctx.sampleRate;
+        const length = sampleRate * 2.0;
+        this.noiseBuffer = this.ctx.createBuffer(1, length, sampleRate);
+        const output = this.noiseBuffer.getChannelData(0);
+        for (let i = 0; i < length; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+      }
+
+      updateVolume() {
+        if (!this.masterGain || !this.ctx) return;
+        const target = CONFIG.soundEnabled ? CONFIG.volume : 0;
+        this.masterGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.03);
+      }
+
+      playLaunch(heightFactor = 1.0) {
+        if (!CONFIG.soundEnabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+
+        // 1. Mortar Tube Thud (low sine punch)
+        const osc = this.ctx.createOscillator();
+        const thudGain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(125, now);
+        osc.frequency.exponentialRampToValueAtTime(34, now + 0.18);
+
+        thudGain.gain.setValueAtTime(0.28, now);
+        thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+        osc.connect(thudGain);
+        thudGain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + 0.21);
+
+        // 2. Ascending Rocket Whistle / Whoosh
+        if (Math.random() < 0.65) {
+          const whistle = this.ctx.createOscillator();
+          const wGain = this.ctx.createGain();
+          whistle.type = 'triangle';
+          const startFreq = 420 + Math.random() * 180;
+          const duration = 0.55 + Math.random() * 0.35;
+          whistle.frequency.setValueAtTime(startFreq, now + 0.04);
+          whistle.frequency.exponentialRampToValueAtTime(startFreq * (1.8 + 0.4 * heightFactor), now + duration);
+
+          wGain.gain.setValueAtTime(0.001, now);
+          wGain.gain.linearRampToValueAtTime(0.045, now + 0.08);
+          wGain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+          whistle.connect(wGain);
+          wGain.connect(this.masterGain);
+          whistle.start(now + 0.04);
+          whistle.stop(now + duration + 0.02);
+        }
+      }
+
+      playExplosion(scale = 1.0, shellType = 'peony') {
+        if (!CONFIG.soundEnabled) return;
+        this.init();
+        if (!this.ctx || !this.noiseBuffer) return;
+
+        const now = this.ctx.currentTime;
+
+        // 1. Sub-bass chest thump
+        const subOsc = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        subOsc.type = 'sine';
+        const baseFreq = Math.max(40, Math.min(95, 78 / Math.sqrt(scale)));
+        subOsc.frequency.setValueAtTime(baseFreq * 1.6, now);
+        subOsc.frequency.exponentialRampToValueAtTime(22, now + 0.55 * scale);
+
+        subGain.gain.setValueAtTime(Math.min(0.65, 0.42 * scale), now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6 * scale);
+
+        subOsc.connect(subGain);
+        subGain.connect(this.masterGain);
+        subOsc.start(now);
+        subOsc.stop(now + 0.65 * scale);
+
+        // 2. Filtered Noise Boom
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(950 + Math.random() * 350, now);
+        filter.frequency.exponentialRampToValueAtTime(90, now + 1.15 * scale);
+
+        const boomGain = this.ctx.createGain();
+        boomGain.gain.setValueAtTime(Math.min(0.7, 0.45 * scale), now);
+        boomGain.gain.exponentialRampToValueAtTime(0.001, now + 1.25 * scale);
+
+        noise.connect(filter);
+        filter.connect(boomGain);
+        boomGain.connect(this.masterGain);
+        noise.start(now);
+        noise.stop(now + 1.3 * scale);
+
+        // 3. Optional Crackle Pop Cluster for Crossette / Willow
+        if (shellType === 'crossette' || shellType === 'willow') {
+          this.playCrackleCluster(shellType === 'crossette' ? 10 : 5, 0.35);
+        }
+      }
+
+      playCrackleCluster(pops = 8, delayOffset = 0.05) {
+        if (!CONFIG.soundEnabled || !this.ctx || !this.noiseBuffer) return;
+        const now = this.ctx.currentTime;
+
+        for (let i = 0; i < pops; i++) {
+          const start = now + delayOffset + Math.random() * 0.45;
+          const src = this.ctx.createBufferSource();
+          src.buffer = this.noiseBuffer;
+
+          const bp = this.ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.setValueAtTime(1800 + Math.random() * 2200, start);
+          bp.Q.setValueAtTime(3.0, start);
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.14, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.055);
+
+          src.connect(bp);
+          bp.connect(gain);
+          gain.connect(this.masterGain);
+
+          src.start(start, Math.random() * 1.2, 0.06);
+        }
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* ==========================================================================
+       3. THREE.JS SCENE, CAMERA, POST-PROCESSING & ENVIRONMENT SETUP
+       ========================================================================== */
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x02040a, 0.0016);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.5, 2000);
+    const DEFAULT_CAM_POS = new THREE.Vector3(0, 38, 165);
+    const DEFAULT_CAM_TARGET = new THREE.Vector3(0, 52, 0);
+    camera.position.copy(DEFAULT_CAM_POS);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance'
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    // OrbitControls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.copy(DEFAULT_CAM_TARGET);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI * 0.492; // Keep camera above the lake surface
+    controls.minDistance = 35;
+    controls.maxDistance = 420;
+    controls.autoRotate = CONFIG.autoRotate;
+    controls.autoRotateSpeed = 0.6;
+
+    // Post-Processing Pipeline (RenderPass + UnrealBloomPass)
+    const renderScene = new RenderPass(scene, camera);
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      CONFIG.bloomStrength,
+      CONFIG.bloomRadius,
+      CONFIG.bloomThreshold
+    );
+    const composer = new EffectComposer(renderer);
+    composer.addPass(renderScene);
+    composer.addPass(bloomPass);
+
+    /* ==========================================================================
+       4. NIGHT SKY DOME, TWINKLING STARFIELD & REFLECTIVE WATER BAY
+       ========================================================================== */
+    // 4.1 Deep Night Sky Gradient Dome
+    const skyGeo = new THREE.SphereGeometry(900, 32, 24);
+    const skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        topColor: { value: new THREE.Color(0x010309) },
+        horizonColor: { value: new THREE.Color(0x091326) },
+        bottomColor: { value: new THREE.Color(0x02040a) }
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 horizonColor;
+        uniform vec3 bottomColor;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition).y;
+          vec3 col = mix(horizonColor, topColor, pow(max(h, 0.0), 0.55));
+          if (h < 0.0) {
+            col = mix(horizonColor, bottomColor, min(1.0, -h * 4.0));
+          }
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `
+    });
+    scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+    // 4.2 Twinkling Starfield Shader
+    const starCount = 2200;
+    const starGeo = new THREE.BufferGeometry();
+    const starPositions = new Float32Array(starCount * 3);
+    const starColors = new Float32Array(starCount * 3);
+    const starPhases = new Float32Array(starCount);
+
+    for (let i = 0; i < starCount; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(Math.random() * 0.88 + 0.05); // Upper hemisphere above horizon
+      const r = 680 + Math.random() * 120;
+
+      starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      starPositions[i * 3 + 1] = r * Math.cos(phi);
+      starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+      const tint = 0.75 + Math.random() * 0.25;
+      starColors[i * 3] = tint;
+      starColors[i * 3 + 1] = tint + (Math.random() * 0.1 - 0.05);
+      starColors[i * 3 + 2] = 1.0;
+
+      starPhases[i] = Math.random() * 100.0;
+    }
+
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+    starGeo.setAttribute('aPhase', new THREE.BufferAttribute(starPhases, 1));
+
+    const starMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uPixelRatio: { value: renderer.getPixelRatio() }
+      },
+      vertexShader: `
+        attribute vec3 color;
+        attribute float aPhase;
+        uniform float uTime;
+        uniform float uPixelRatio;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          vColor = color;
+          float twinkle = 0.55 + 0.45 * sin(uTime * 2.2 + aPhase);
+          vAlpha = twinkle;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = (1.6 + 1.4 * twinkle) * uPixelRatio;
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5));
+          if (d > 0.5) discard;
+          float strength = smoothstep(0.5, 0.05, d);
+          gl_FragColor = vec4(vColor, strength * vAlpha * 0.85);
+        }
+      `
+    });
+    const starField = new THREE.Points(starGeo, starMat);
+    scene.add(starField);
+
+    // 4.3 Reflective Water Plane with Dynamic Burst Light Uniforms & Procedural Waves
+    const MAX_DYNAMIC_LIGHTS = 6;
+    const lightPositions = Array.from({ length: MAX_DYNAMIC_LIGHTS }, () => new THREE.Vector3(0, -100, 0));
+    const lightColors = Array.from({ length: MAX_DYNAMIC_LIGHTS }, () => new THREE.Color(0, 0, 0));
+    const lightIntensities = new Float32Array(MAX_DYNAMIC_LIGHTS);
+
+    const waterGeo = new THREE.PlaneGeometry(1400, 1400, 128, 128);
+    waterGeo.rotateX(-Math.PI / 2);
+
+    const waterMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uCameraPos: { value: camera.position },
+        uLightPos: { value: lightPositions },
+        uLightColor: { value: lightColors },
+        uLightIntensity: { value: lightIntensities },
+        uReflectionsEnabled: { value: 1.0 }
+      },
+      vertexShader: `
+        uniform float uTime;
+        varying vec3 vWorldPos;
+        void main() {
+          vec3 pos = position;
+          // Subtle organic wave elevation
+          float wave = sin(pos.x * 0.08 + uTime * 1.6) * cos(pos.z * 0.08 + uTime * 1.2) * 0.25;
+          pos.y += wave;
+          vec4 worldPosition = modelMatrix * vec4(pos, 1.0);
+          vWorldPos = worldPosition.xyz;
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uCameraPos;
+        uniform vec3 uLightPos[${MAX_DYNAMIC_LIGHTS}];
+        uniform vec3 uLightColor[${MAX_DYNAMIC_LIGHTS}];
+        uniform float uLightIntensity[${MAX_DYNAMIC_LIGHTS}];
+        uniform float uReflectionsEnabled;
+        varying vec3 vWorldPos;
+
+        void main() {
+          // Procedural normal perturbation for shimmering water ripples
+          float nx = sin(vWorldPos.x * 0.35 + uTime * 2.4) * 0.045 + cos(vWorldPos.z * 0.22 - uTime * 1.8) * 0.035;
+          float nz = cos(vWorldPos.z * 0.40 + uTime * 2.1) * 0.045 + sin(vWorldPos.x * 0.28 + uTime * 1.5) * 0.035;
+          vec3 normal = normalize(vec3(nx, 1.0, nz));
+
+          vec3 viewDir = normalize(uCameraPos - vWorldPos);
+          float distFromCenter = length(vWorldPos.xz);
+          float fogFactor = exp(-0.0000035 * distFromCenter * distFromCenter);
+
+          // Base dark nocturnal water tone
+          vec3 baseColor = mix(vec3(0.01, 0.02, 0.05), vec3(0.02, 0.045, 0.09), pow(1.0 - max(dot(viewDir, normal), 0.0), 3.0));
+          vec3 totalLight = vec3(0.0);
+
+          if (uReflectionsEnabled > 0.5) {
+            for (int i = 0; i < ${MAX_DYNAMIC_LIGHTS}; i++) {
+              float inten = uLightIntensity[i];
+              if (inten > 0.005) {
+                vec3 lVec = uLightPos[i] - vWorldPos;
+                float dist = length(lVec);
+                vec3 lDir = lVec / max(dist, 0.001);
+                vec3 halfVec = normalize(lDir + viewDir);
+
+                // Anisotropic stretched water column specular highlight
+                float spec = pow(max(dot(normal, halfVec), 0.0), 48.0);
+                float broad = pow(max(dot(normal, lDir), 0.0), 3.0);
+                float atten = inten / (1.0 + 0.00045 * dist * dist);
+
+                totalLight += uLightColor[i] * (spec * 2.8 + broad * 0.35) * atten;
+              }
+            }
+          }
+
+          vec3 finalColor = (baseColor + totalLight) * fogFactor;
+          gl_FragColor = vec4(finalColor, 1.0);
+        }
+      `
+    });
+    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    scene.add(waterMesh);
+
+    // 4.4 Subtle Launch Barges / Pontoon Platforms on the Water
+    const bargeGroup = new THREE.Group();
+    const bargeGeo = new THREE.BoxGeometry(10, 1.2, 6);
+    const bargeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+    const beaconGeo = new THREE.SphereGeometry(0.32, 8, 8);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+
+    [-60, -20, 20, 60].forEach((xPos) => {
+      const barge = new THREE.Mesh(bargeGeo, bargeMat);
+      barge.position.set(xPos, 0.3, 0);
+      const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+      beacon.position.set(xPos, 1.2, 0);
+      bargeGroup.add(barge, beacon);
+    });
+    scene.add(bargeGroup);
+
+    /* ==========================================================================
+       5. HIGH-PERFORMANCE UNIFIED PARTICLE & REFLECTION RENDERER
+       ========================================================================== */
+    const MAX_RENDER_PARTICLES = 65000;
+    const pPositions = new Float32Array(MAX_RENDER_PARTICLES * 3);
+    const pColors = new Float32Array(MAX_RENDER_PARTICLES * 3);
+    const pSizes = new Float32Array(MAX_RENDER_PARTICLES);
+    const pAlphas = new Float32Array(MAX_RENDER_PARTICLES);
+
+    const particleGeo = new THREE.BufferGeometry();
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3).setUsage(THREE.DynamicDrawUsage));
+    particleGeo.setAttribute('customColor', new THREE.BufferAttribute(pColors, 3).setUsage(THREE.DynamicDrawUsage));
+    particleGeo.setAttribute('size', new THREE.BufferAttribute(pSizes, 1).setUsage(THREE.DynamicDrawUsage));
+    particleGeo.setAttribute('alpha', new THREE.BufferAttribute(pAlphas, 1).setUsage(THREE.DynamicDrawUsage));
+
+    const particleShaderMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uPixelRatio: { value: renderer.getPixelRatio() }
+      },
+      vertexShader: `
+        attribute vec3 customColor;
+        attribute float size;
+        attribute float alpha;
+        uniform float uPixelRatio;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          vColor = customColor;
+          vAlpha = alpha;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = clamp(size * uPixelRatio * (290.0 / max(-mvPosition.z, 1.0)), 1.0, 95.0);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          vec2 uv = gl_PointCoord - vec2(0.5);
+          float dist = length(uv);
+          if (dist > 0.5) discard;
+
+          // Intense hot core + soft neon outer corona
+          float core = exp(-dist * dist * 28.0);
+          float glow = pow(max(0.0, 1.0 - dist * 2.0), 2.2);
+          vec3 col = vColor * (glow * 1.25) + vec3(1.0) * (core * 0.65);
+          gl_FragColor = vec4(col, (glow * 0.85 + core * 0.15) * vAlpha);
+        }
+      `
+    });
+
+    const particlePoints = new THREE.Points(particleGeo, particleShaderMat);
+    particlePoints.frustumCulled = false;
+    scene.add(particlePoints);
+
+    /* ==========================================================================
+       6. FIREWORKS PHYSICS ENGINE (ROCKETS, SHELLS, TRAILS & FLASHES)
+       ========================================================================== */
+    class SparkParticle {
+      constructor() {
+        this.active = false;
+        this.x = 0; this.y = 0; this.z = 0;
+        this.vx = 0; this.vy = 0; this.vz = 0;
+        this.age = 0;
+        this.life = 1.0;
+        this.size = 3.0;
+        this.drag = 0.982;
+        this.gravityScale = 1.0;
+        this.colorMode = 'transition';
+        this.c1 = new THREE.Color();
+        this.c2 = new THREE.Color();
+        this.c3 = new THREE.Color();
+        this.currColor = new THREE.Color();
+        this.twinkleSpeed = 0;
+        this.twinklePhase = 0;
+        this.trailTimer = 0;
+        this.trailInterval = 0.025;
+        this.hasSubBurst = false;
+        this.isTrail = false;
+      }
+    }
+
+    class ExplosionLight {
+      constructor() {
+        this.active = false;
+        this.pos = new THREE.Vector3();
+        this.color = new THREE.Color();
+        this.intensity = 0;
+        this.age = 0;
+        this.duration = 1.2;
+      }
+    }
+
+    class FireworkSystem {
+      constructor() {
+        this.rockets = [];
+        this.maxSparks = 28000;
+        this.sparkPool = Array.from({ length: this.maxSparks }, () => new SparkParticle());
+        this.activeSparkCount = 0;
+        this.sparkCursor = 0;
+        this.lights = Array.from({ length: MAX_DYNAMIC_LIGHTS }, () => new ExplosionLight());
+        this.reticles = [];
+      }
+
+      acquireSpark() {
+        for (let i = 0; i < this.maxSparks; i++) {
+          const idx = (this.sparkCursor + i) % this.maxSparks;
+          const s = this.sparkPool[idx];
+          if (!s.active) {
+            this.sparkCursor = (idx + 1) % this.maxSparks;
+            s.active = true;
+            return s;
+          }
+        }
+        const s = this.sparkPool[this.sparkCursor];
+        this.sparkCursor = (this.sparkCursor + 1) % this.maxSparks;
+        s.active = true;
+        return s;
+      }
+
+      spawnFlashLight(x, y, z, color, intensity = 3.2, duration = 1.35) {
+        let chosen = this.lights[0];
+        for (const l of this.lights) {
+          if (!l.active) {
+            chosen = l;
+            break;
+          }
+          if (l.age > chosen.age) chosen = l;
+        }
+        chosen.active = true;
+        chosen.pos.set(x, y, z);
+        chosen.color.copy(color);
+        chosen.intensity = intensity;
+        chosen.age = 0;
+        chosen.duration = duration;
+      }
+
+      getActivePalette() {
+        if (CONFIG.autoCyclePalettes) {
+          const randomKey = THEME_KEYS[Math.floor(Math.random() * THEME_KEYS.length)];
+          const t = FIREWORK_THEMES[randomKey];
+          return {
+            flash: new THREE.Color(t.flash),
+            primary: new THREE.Color(t.primary),
+            primaryAlt: t.primaryAlt ? new THREE.Color(t.primaryAlt) : null,
+            secondary: new THREE.Color(t.secondary),
+            secondaryAlt: t.secondaryAlt ? new THREE.Color(t.secondaryAlt) : null,
+            trail: new THREE.Color(t.sparks),
+            spark: new THREE.Color(t.sparks)
+          };
+        }
+        return {
+          flash: new THREE.Color(CONFIG.flashColor),
+          primary: new THREE.Color(CONFIG.primaryColor),
+          primaryAlt: CONFIG.primaryAltColor ? new THREE.Color(CONFIG.primaryAltColor) : null,
+          secondary: new THREE.Color(CONFIG.secondaryColor),
+          secondaryAlt: CONFIG.secondaryAltColor ? new THREE.Color(CONFIG.secondaryAltColor) : null,
+          trail: new THREE.Color(CONFIG.sparkColor),
+          spark: new THREE.Color(CONFIG.sparkColor)
+        };
+      }
+
+      resolveShellType() {
+        if (CONFIG.shellType !== 'random') return CONFIG.shellType;
+        const types = ['peony', 'chrysanthemum', 'willow', 'saturn', 'crossette'];
+        return types[Math.floor(Math.random() * types.length)];
+      }
+
+      launchRocket(targetPos = null, forcedType = null) {
+        const spread = CONFIG.launchSpread;
+        const startX = (Math.random() - 0.5) * spread;
+        const startZ = (Math.random() - 0.5) * (spread * 0.35);
+
+        let tx, ty, tz;
+        if (targetPos) {
+          tx = targetPos.x;
+          ty = Math.max(24, Math.min(135, targetPos.y));
+          tz = targetPos.z;
+          this.spawnTargetReticle(tx, ty, tz);
+        } else {
+          tx = startX + (Math.random() - 0.5) * 32;
+          ty = 48 + Math.random() * 52;
+          tz = startZ + (Math.random() - 0.5) * 28;
+        }
+
+        const flightDuration = 1.05 + (ty / 110) * 0.55;
+        const palette = this.getActivePalette();
+        const shellType = forcedType || this.resolveShellType();
+
+        this.rockets.push({
+          x: startX,
+          y: 1.0,
+          z: startZ,
+          startX,
+          startY: 1.0,
+          startZ,
+          tx,
+          ty,
+          tz,
+          age: 0,
+          duration: flightDuration,
+          wobbleSeed: Math.random() * 100,
+          trailAccum: 0,
+          palette,
+          shellType
+        });
+
+        // Subtle launch flash on barge
+        this.spawnFlashLight(startX, 3.0, startZ, palette.trail, 0.9, 0.3);
+        sound.playLaunch(ty / 90);
+      }
+
+      spawnTargetReticle(x, y, z) {
+        const ringGeo = new THREE.RingGeometry(1.2, 1.65, 24);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: 0x38bdf8,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.85,
+          blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(ringGeo, ringMat);
+        mesh.position.set(x, y, z);
+        mesh.lookAt(camera.position);
+        scene.add(mesh);
+        this.reticles.push({ mesh, age: 0, duration: 0.75 });
+      }
+
+      detonateShell(rocket) {
+        const { x, y, z, palette, shellType } = rocket;
+        const count = Math.floor(CONFIG.particleCount * (shellType === 'willow' ? 0.85 : 1.0));
+        const baseSpeed = 34 * CONFIG.explosionSize;
+        const colorMode = CONFIG.colorMode;
+
+        // Intense core flash particle using theme's Core / Burst Flash hue
+        const flash = this.acquireSpark();
+        flash.x = x; flash.y = y; flash.z = z;
+        flash.vx = 0; flash.vy = 0; flash.vz = 0;
+        flash.age = 0;
+        flash.life = 0.22;
+        flash.size = 38 * CONFIG.explosionSize;
+        flash.drag = 0.9;
+        flash.gravityScale = 0;
+        flash.isTrail = true;
+        flash.hasSubBurst = false;
+        flash.currColor.copy(palette.flash || palette.spark);
+
+        // Dynamic water & scene illumination
+        this.spawnFlashLight(x, y, z, palette.primary, 3.6 * CONFIG.explosionSize, 1.5);
+        sound.playExplosion(CONFIG.explosionSize, shellType);
+
+        // Random orientation axis for Saturn ring
+        const ringAxis = new THREE.Vector3(
+          (Math.random() - 0.5) * 1.2,
+          1.0,
+          (Math.random() - 0.5) * 1.2
+        ).normalize();
+        const tempVec = new THREE.Vector3();
+        const upVec = new THREE.Vector3(0, 1, 0);
+        const ringQuat = new THREE.Quaternion().setFromUnitVectors(upVec, ringAxis);
+
+        for (let i = 0; i < count; i++) {
+          const s = this.acquireSpark();
+          s.x = x; s.y = y; s.z = z;
+          s.age = 0;
+          s.isTrail = false;
+          s.hasSubBurst = false;
+          s.colorMode = colorMode;
+          s.twinklePhase = Math.random() * Math.PI * 2;
+
+          // Support dual-emission themes (e.g., Rainbow Prismatic Overdrive)
+          const useAlt = (i % 2 === 1);
+          const priCol = (useAlt && palette.primaryAlt) ? palette.primaryAlt : palette.primary;
+          const secCol = (useAlt && palette.secondaryAlt) ? palette.secondaryAlt : palette.secondary;
+
+          // Assign palette colors based on colorMode
+          if (colorMode === 'rainbow') {
+            const hue = (i / count + Math.random() * 0.1) % 1.0;
+            s.c1.setHSL(hue, 0.95, 0.6);
+            s.c2.setHSL((hue + 0.18) % 1.0, 0.95, 0.55);
+            s.c3.copy(palette.spark);
+          } else if (colorMode === 'monochrome') {
+            s.c1.copy(priCol);
+            s.c2.copy(priCol);
+            s.c3.copy(priCol);
+          } else if (colorMode === 'duo') {
+            const isOuter = i % 2 === 0;
+            s.c1.copy(isOuter ? priCol : secCol);
+            s.c2.copy(isOuter ? priCol : secCol);
+            s.c3.copy(palette.spark);
+          } else {
+            // 'transition': Primary Tendril -> Secondary Fade -> Lingering Sparks
+            s.c1.copy(priCol);
+            s.c2.copy(secCol);
+            s.c3.copy(palette.spark);
+          }
+          s.currColor.copy(s.c1);
+
+          // Spherical distribution
+          const u = Math.random();
+          const v = Math.random();
+          const theta = u * 2.0 * Math.PI;
+          const phi = Math.acos(2.0 * v - 1.0);
+
+          let dirX = Math.sin(phi) * Math.cos(theta);
+          let dirY = Math.sin(phi) * Math.sin(theta);
+          let dirZ = Math.cos(phi);
+
+          let speed = baseSpeed * (0.86 + Math.random() * 0.28);
+
+          if (shellType === 'peony') {
+            s.life = 1.35 + Math.random() * 0.45;
+            s.size = 3.2;
+            s.drag = CONFIG.drag;
+            s.gravityScale = 0.85;
+            s.trailInterval = 0.045 / CONFIG.trailLength;
+            s.twinkleSpeed = 8.0;
+          } else if (shellType === 'chrysanthemum') {
+            s.life = 1.75 + Math.random() * 0.55;
+            s.size = 3.5;
+            s.drag = CONFIG.drag;
+            s.gravityScale = 0.95;
+            s.trailInterval = 0.016 / CONFIG.trailLength;
+            s.twinkleSpeed = 6.0;
+          } else if (shellType === 'willow') {
+            speed *= 0.78 + Math.random() * 0.35;
+            s.life = 2.6 + Math.random() * 0.9;
+            s.size = 3.0;
+            s.drag = Math.min(0.993, CONFIG.drag + 0.005);
+            s.gravityScale = 1.45;
+            s.trailInterval = 0.014 / CONFIG.trailLength;
+            s.twinkleSpeed = 14.0;
+            if (colorMode === 'transition') {
+              s.c2.copy(palette.trail);
+            }
+          } else if (shellType === 'saturn') {
+            if (i < count * 0.65) {
+              const ringAngle = (i / (count * 0.65)) * Math.PI * 2;
+              tempVec.set(Math.cos(ringAngle), (Math.random() - 0.5) * 0.06, Math.sin(ringAngle)).normalize();
+              tempVec.applyQuaternion(ringQuat);
+              dirX = tempVec.x;
+              dirY = tempVec.y;
+              dirZ = tempVec.z;
+              speed = baseSpeed * (1.12 + Math.random() * 0.08);
+              s.c1.copy(secCol);
+              s.c2.copy(priCol);
+            } else {
+              speed = baseSpeed * (0.45 + Math.random() * 0.2);
+              s.c1.copy(priCol);
+              s.c2.copy(palette.flash || palette.spark);
+            }
+            s.life = 1.6 + Math.random() * 0.4;
+            s.size = 3.4;
+            s.drag = CONFIG.drag;
+            s.gravityScale = 0.8;
+            s.trailInterval = 0.025 / CONFIG.trailLength;
+            s.twinkleSpeed = 9.0;
+          } else if (shellType === 'crossette') {
+            speed *= 0.85 + Math.random() * 0.3;
+            s.life = 1.1 + Math.random() * 0.35;
+            s.size = 4.0;
+            s.drag = CONFIG.drag;
+            s.gravityScale = 0.85;
+            s.trailInterval = 0.022 / CONFIG.trailLength;
+            s.twinkleSpeed = 18.0;
+            s.hasSubBurst = i % 6 === 0;
+          }
+
+          s.vx = dirX * speed;
+          s.vy = dirY * speed;
+          s.vz = dirZ * speed;
+          s.trailTimer = Math.random() * s.trailInterval;
+        }
+      }
+
+      spawnSubBurst(parentSpark) {
+        const subCount = 6;
+        const speed = 11.5 * CONFIG.explosionSize;
+        for (let i = 0; i < subCount; i++) {
+          const sub = this.acquireSpark();
+          sub.x = parentSpark.x;
+          sub.y = parentSpark.y;
+          sub.z = parentSpark.z;
+
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          sub.vx = Math.sin(phi) * Math.cos(theta) * speed;
+          sub.vy = Math.sin(phi) * Math.sin(theta) * speed;
+          sub.vz = Math.cos(phi) * speed;
+
+          sub.age = 0;
+          sub.life = 0.45 + Math.random() * 0.25;
+          sub.size = 2.8;
+          sub.drag = 0.96;
+          sub.gravityScale = 0.9;
+          sub.isTrail = false;
+          sub.hasSubBurst = false;
+          sub.colorMode = 'monochrome';
+          sub.c1.copy(parentSpark.c3);
+          sub.currColor.copy(parentSpark.c3);
+          sub.trailInterval = 0.035;
+          sub.twinkleSpeed = 24.0;
+          sub.twinklePhase = Math.random() * 6.28;
+        }
+      }
+
+      spawnTrailDot(x, y, z, color, size, life) {
+        const t = this.acquireSpark();
+        t.x = x + (Math.random() - 0.5) * 0.18;
+        t.y = y + (Math.random() - 0.5) * 0.18;
+        t.z = z + (Math.random() - 0.5) * 0.18;
+        t.vx = (Math.random() - 0.5) * 0.6;
+        t.vy = -0.4 - Math.random() * 0.5;
+        t.vz = (Math.random() - 0.5) * 0.6;
+        t.age = 0;
+        t.life = life * CONFIG.trailLength;
+        t.size = size;
+        t.drag = 0.94;
+        t.gravityScale = 0.15;
+        t.isTrail = true;
+        t.hasSubBurst = false;
+        t.currColor.copy(color);
+      }
+
+      update(dt, elapsedTime) {
+        // 1. Update Target Reticles
+        for (let i = this.reticles.length - 1; i >= 0; i--) {
+          const r = this.reticles[i];
+          r.age += dt;
+          if (r.age >= r.duration) {
+            scene.remove(r.mesh);
+            r.mesh.geometry.dispose();
+            r.mesh.material.dispose();
+            this.reticles.splice(i, 1);
+          } else {
+            const p = r.age / r.duration;
+            r.mesh.scale.setScalar(1.0 + Math.sin(p * Math.PI) * 0.35);
+            r.mesh.material.opacity = (1.0 - p) * 0.75;
+            r.mesh.lookAt(camera.position);
+          }
+        }
+
+        // 2. Update Ascending Mortar Rockets
+        for (let i = this.rockets.length - 1; i >= 0; i--) {
+          const r = this.rockets[i];
+          r.age += dt;
+          const t = Math.min(1.0, r.age / r.duration);
+          const easeOut = 1.0 - Math.pow(1.0 - t, 2.15);
+
+          const wobbleX = Math.sin(r.age * 16.0 + r.wobbleSeed) * 0.65 * (1.0 - t);
+          const wobbleZ = Math.cos(r.age * 14.0 + r.wobbleSeed) * 0.65 * (1.0 - t);
+
+          r.x = THREE.MathUtils.lerp(r.startX, r.tx, easeOut) + wobbleX;
+          r.y = THREE.MathUtils.lerp(r.startY, r.ty, easeOut);
+          r.z = THREE.MathUtils.lerp(r.startZ, r.tz, easeOut) + wobbleZ;
+
+          r.trailAccum += dt;
+          while (r.trailAccum > 0.012) {
+            r.trailAccum -= 0.012;
+            this.spawnTrailDot(r.x, r.y, r.z, r.palette.trail, 2.2, 0.28);
+          }
+
+          if (t >= 1.0) {
+            this.detonateShell(r);
+            this.rockets.splice(i, 1);
+          }
+        }
+
+        // 3. Update Dynamic Water Lights
+        for (let i = 0; i < MAX_DYNAMIC_LIGHTS; i++) {
+          const l = this.lights[i];
+          if (l.active) {
+            l.age += dt;
+            if (l.age >= l.duration) {
+              l.active = false;
+              lightIntensities[i] = 0;
+            } else {
+              const fade = Math.pow(1.0 - l.age / l.duration, 2.2);
+              lightPositions[i].copy(l.pos);
+              lightColors[i].copy(l.color);
+              lightIntensities[i] = l.intensity * fade;
+            }
+          } else {
+            lightIntensities[i] = 0;
+          }
+        }
+
+        // 4. Update All Active Sparks & Populate Render Buffers
+        let renderIdx = 0;
+        let activeSparks = 0;
+        const grav = CONFIG.gravity;
+        const wind = CONFIG.wind;
+        const reflectEnabled = CONFIG.waterReflections;
+
+        // Render ascending rocket heads
+        for (let i = 0; i < this.rockets.length; i++) {
+          const r = this.rockets[i];
+          if (renderIdx < MAX_RENDER_PARTICLES - 2) {
+            const i3 = renderIdx * 3;
+            pPositions[i3] = r.x;
+            pPositions[i3 + 1] = r.y;
+            pPositions[i3 + 2] = r.z;
+            pColors[i3] = r.palette.flash.r;
+            pColors[i3 + 1] = r.palette.flash.g;
+            pColors[i3 + 2] = r.palette.flash.b;
+            pSizes[renderIdx] = 5.2;
+            pAlphas[renderIdx] = 1.0;
+            renderIdx++;
+          }
+        }
+
+        const frameDragExp = dt * 60.0;
+
+        for (let i = 0; i < this.maxSparks; i++) {
+          const s = this.sparkPool[i];
+          if (!s.active) continue;
+
+          s.age += dt;
+          if (s.age >= s.life || s.y < 0.2) {
+            if (s.hasSubBurst && s.y > 4.0) {
+              this.spawnSubBurst(s);
+            }
+            s.active = false;
+            continue;
+          }
+
+          activeSparks++;
+          const normAge = s.age / s.life;
+
+          if (!s.isTrail) {
+            const dragFactor = Math.pow(s.drag, frameDragExp);
+            s.vx = s.vx * dragFactor + wind * dt * 0.35;
+            s.vy = s.vy * dragFactor - grav * s.gravityScale * dt;
+            s.vz = s.vz * dragFactor;
+
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+            s.z += s.vz * dt;
+
+            // Color progression over lifespan
+            if (s.colorMode === 'transition' || s.colorMode === 'rainbow') {
+              if (normAge < 0.55) {
+                s.currColor.lerpColors(s.c1, s.c2, normAge / 0.55);
+              } else {
+                s.currColor.lerpColors(s.c2, s.c3, (normAge - 0.55) / 0.45);
+              }
+            }
+
+            // Spawn lingering trail micro-sparks
+            s.trailTimer += dt;
+            if (s.trailTimer >= s.trailInterval && normAge < 0.82) {
+              s.trailTimer = 0;
+              this.spawnTrailDot(s.x, s.y, s.z, s.currColor, s.size * 0.58, 0.24);
+            }
+          } else {
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+            s.z += s.vz * dt;
+          }
+
+          let alpha = Math.pow(1.0 - normAge, 1.45);
+          if (!s.isTrail && normAge > 0.45) {
+            const twinkle = 0.65 + 0.35 * Math.sin(elapsedTime * s.twinkleSpeed + s.twinklePhase);
+            alpha *= twinkle;
+          }
+
+          // Write Aerial Particle to Buffer
+          if (renderIdx < MAX_RENDER_PARTICLES) {
+            const i3 = renderIdx * 3;
+            pPositions[i3] = s.x;
+            pPositions[i3 + 1] = s.y;
+            pPositions[i3 + 2] = s.z;
+            pColors[i3] = s.currColor.r;
+            pColors[i3 + 1] = s.currColor.g;
+            pColors[i3 + 2] = s.currColor.b;
+            pSizes[renderIdx] = s.size * (1.0 - normAge * 0.35);
+            pAlphas[renderIdx] = alpha;
+            renderIdx++;
+          }
+
+          // Write Mirrored Water Reflection Particle
+          if (reflectEnabled && !s.isTrail && renderIdx < MAX_RENDER_PARTICLES) {
+            const rippleOffset = Math.sin(s.x * 0.3 + elapsedTime * 5.0) * 1.15;
+            const i3 = renderIdx * 3;
+            pPositions[i3] = s.x + rippleOffset;
+            pPositions[i3 + 1] = -s.y * 0.85;
+            pPositions[i3 + 2] = s.z + rippleOffset;
+            pColors[i3] = s.currColor.r * 0.65;
+            pColors[i3 + 1] = s.currColor.g * 0.65;
+            pColors[i3 + 2] = s.currColor.b * 0.75;
+            pSizes[renderIdx] = s.size * 1.45;
+            pAlphas[renderIdx] = alpha * 0.26;
+            renderIdx++;
+          }
+        }
+
+        this.activeSparkCount = activeSparks;
+
+        particleGeo.setDrawRange(0, renderIdx);
+        particleGeo.attributes.position.needsUpdate = true;
+        particleGeo.attributes.customColor.needsUpdate = true;
+        particleGeo.attributes.size.needsUpdate = true;
+        particleGeo.attributes.alpha.needsUpdate = true;
+      }
+
+      triggerGrandFinale() {
+        const totalShells = 26;
+        const types = ['peony', 'chrysanthemum', 'saturn', 'crossette', 'willow'];
+        for (let i = 0; i < totalShells; i++) {
+          setTimeout(() => {
+            const spread = CONFIG.launchSpread * 1.25;
+            const tx = (Math.random() - 0.5) * spread;
+            const ty = 45 + Math.random() * 65 + (i > 18 ? 18 : 0);
+            const tz = (Math.random() - 0.5) * 45;
+            const forced = i > 20 ? 'willow' : types[i % types.length];
+            this.launchRocket(new THREE.Vector3(tx, ty, tz), forced);
+          }, i * 115);
+        }
+      }
+    }
+
+    const fireworks = new FireworkSystem();
+
+    /* ==========================================================================
+       7. RAYCASTING (CLICK / TAP SKY TO TARGET LAUNCH)
+       ========================================================================== */
+    const raycaster = new THREE.Raycaster();
+    const pointerNDC = new THREE.Vector2();
+    const targetPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const intersectPoint = new THREE.Vector3();
+
+    let pointerDownPos = { x: 0, y: 0 };
+    let pointerDownTime = 0;
+
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      pointerDownPos.x = e.clientX;
+      pointerDownPos.y = e.clientY;
+      pointerDownTime = performance.now();
+      sound.init();
+    });
+
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      const dx = e.clientX - pointerDownPos.x;
+      const dy = e.clientY - pointerDownPos.y;
+      const dist = Math.hypot(dx, dy);
+      const elapsed = performance.now() - pointerDownTime;
+
+      if (dist < 6 && elapsed < 350) {
+        pointerNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+        pointerNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(pointerNDC, camera);
+
+        const planeNormal = new THREE.Vector3();
+        camera.getWorldDirection(planeNormal).negate();
+        planeNormal.y = 0;
+        planeNormal.normalize();
+        targetPlane.setFromNormalAndCoplanarPoint(planeNormal, new THREE.Vector3(0, 50, 0));
+
+        if (raycaster.ray.intersectPlane(targetPlane, intersectPoint)) {
+          if (intersectPoint.y < 18) intersectPoint.y = 35 + Math.random() * 25;
+          fireworks.launchRocket(intersectPoint);
+        }
+      }
+    });
+
+    /* ==========================================================================
+       8. UI BINDINGS, 30 THEME PRESETS, TABS & KEYBOARD SHORTCUTS
+       ========================================================================== */
+    // Tab Switching
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-tab');
+        tabBtns.forEach((b) => {
+          b.className = 'tab-btn py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition';
+        });
+        btn.className = 'tab-btn py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 transition';
+        tabContents.forEach((c) => {
+          c.classList.toggle('hidden', c.id !== targetId);
+        });
+      });
+    });
+
+    // Shell Type Buttons
+    const shellBtns = document.querySelectorAll('.shell-btn');
+    shellBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        CONFIG.shellType = btn.getAttribute('data-shell');
+        shellBtns.forEach((b) => {
+          b.className = 'shell-btn p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/70 text-left transition';
+          b.firstElementChild.className = 'font-semibold text-slate-200';
+        });
+        btn.className = 'shell-btn p-2.5 rounded-xl border border-cyan-500/50 bg-cyan-500/15 text-left transition';
+        btn.firstElementChild.className = 'font-semibold text-cyan-300';
+      });
+    });
+
+    // Helper for Sliders
+    function bindSlider(id, valId, prop, formatter = (v) => v, onChange = null) {
+      const el = document.getElementById(id);
+      const valEl = document.getElementById(valId);
+      el.addEventListener('input', () => {
+        const num = parseFloat(el.value);
+        CONFIG[prop] = num;
+        if (valEl) valEl.textContent = formatter(num);
+        if (onChange) onChange(num);
+      });
+    }
+
+    bindSlider('rng-frequency', 'val-frequency', 'launchFrequency', (v) => `${v.toFixed(1)} /s`);
+    bindSlider('rng-spread', 'val-spread', 'launchSpread', (v) => `${v} m`);
+    bindSlider('rng-size', 'val-size', 'explosionSize', (v) => `${v.toFixed(2)}x`);
+    bindSlider('rng-count', 'val-count', 'particleCount', (v) => `${v}`);
+    bindSlider('rng-gravity', 'val-gravity', 'gravity', (v) => `${v.toFixed(1)} m/s²`);
+    bindSlider('rng-drag', 'val-drag', 'drag', (v) => `${v.toFixed(3)}`);
+    bindSlider('rng-trail-len', 'val-trail-len', 'trailLength', (v) => `${v.toFixed(1)}x`);
+    bindSlider('rng-wind', 'val-wind', 'wind', (v) => `${v.toFixed(1)} m/s`);
+
+    bindSlider('rng-bloom-strength', 'val-bloom-strength', 'bloomStrength', (v) => v.toFixed(2), (v) => {
+      bloomPass.strength = v;
+    });
+    bindSlider('rng-bloom-radius', 'val-bloom-radius', 'bloomRadius', (v) => v.toFixed(2), (v) => {
+      bloomPass.radius = v;
+    });
+    bindSlider('rng-bloom-thresh', 'val-bloom-thresh', 'bloomThreshold', (v) => v.toFixed(2), (v) => {
+      bloomPass.threshold = v;
+    });
+
+    // Volume Slider
+    const rngVolume = document.getElementById('rng-volume');
+    const valVolume = document.getElementById('val-volume');
+    rngVolume.addEventListener('input', () => {
+      const pct = parseInt(rngVolume.value, 10);
+      CONFIG.volume = pct / 100;
+      valVolume.textContent = `${pct}%`;
+      sound.updateVolume();
+    });
+
+    // Checkboxes & Selects
+    document.getElementById('chk-autoshow').addEventListener('change', (e) => {
+      CONFIG.autoShow = e.target.checked;
+    });
+    document.getElementById('sel-colormode').addEventListener('change', (e) => {
+      CONFIG.colorMode = e.target.value;
+    });
+    document.getElementById('chk-random-palette').addEventListener('change', (e) => {
+      CONFIG.autoCyclePalettes = e.target.checked;
+    });
+    document.getElementById('chk-reflections').addEventListener('change', (e) => {
+      CONFIG.waterReflections = e.target.checked;
+      waterMat.uniforms.uReflectionsEnabled.value = e.target.checked ? 1.0 : 0.0;
+    });
+    document.getElementById('chk-autorotate').addEventListener('change', (e) => {
+      CONFIG.autoRotate = e.target.checked;
+      controls.autoRotate = e.target.checked;
+    });
+
+    // Color Pickers & 30 Atmospheric Theme Presets
+    function syncColorPickerUI() {
+      document.getElementById('col-flash').value = CONFIG.flashColor.toLowerCase();
+      document.getElementById('hex-flash').textContent = CONFIG.flashColor.toUpperCase();
+      document.getElementById('col-primary').value = CONFIG.primaryColor.toLowerCase();
+      document.getElementById('hex-primary').textContent = CONFIG.primaryColor.toUpperCase();
+      document.getElementById('col-secondary').value = CONFIG.secondaryColor.toLowerCase();
+      document.getElementById('hex-secondary').textContent = CONFIG.secondaryColor.toUpperCase();
+      document.getElementById('col-spark').value = CONFIG.sparkColor.toLowerCase();
+      document.getElementById('hex-spark').textContent = CONFIG.sparkColor.toUpperCase();
+    }
+
+    function highlightActivePresetButton(activeKey) {
+      document.querySelectorAll('.preset-btn').forEach((btn) => {
+        const isCurrent = btn.getAttribute('data-theme-key') === activeKey;
+        if (isCurrent) {
+          btn.className = 'preset-btn w-full p-2.5 rounded-xl bg-cyan-500/15 border border-cyan-400/60 flex items-center justify-between gap-2 text-left transition';
+        } else {
+          btn.className = 'preset-btn w-full p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-slate-800 flex items-center justify-between gap-2 text-left transition';
+        }
+      });
+    }
+
+    function applyThemeByKey(themeKey, triggerLaunch = true) {
+      const theme = FIREWORK_THEMES[themeKey];
+      if (!theme) return;
+
+      CONFIG.activeThemeKey = themeKey;
+      CONFIG.flashColor = theme.flash.toUpperCase();
+      CONFIG.primaryColor = theme.primary.toUpperCase();
+      CONFIG.secondaryColor = theme.secondary.toUpperCase();
+      CONFIG.sparkColor = theme.sparks.toUpperCase();
+      CONFIG.primaryAltColor = theme.primaryAlt ? theme.primaryAlt.toUpperCase() : null;
+      CONFIG.secondaryAltColor = theme.secondaryAlt ? theme.secondaryAlt.toUpperCase() : null;
+
+      CONFIG.autoCyclePalettes = false;
+      document.getElementById('chk-random-palette').checked = false;
+
+      // Update Active Theme Banner
+      document.getElementById('active-theme-name').textContent = theme.name;
+      document.getElementById('active-theme-category').textContent = theme.category;
+      document.getElementById('active-theme-vibe').textContent = theme.vibe;
+
+      syncColorPickerUI();
+      highlightActivePresetButton(themeKey);
+
+      if (triggerLaunch) {
+        sound.init();
+        fireworks.launchRocket();
+      }
+    }
+
+    function renderThemePresets(categoryFilter = 'all') {
+      const containerEl = document.getElementById('palette-presets');
+      containerEl.innerHTML = '';
+
+      THEME_KEYS.forEach((key) => {
+        const theme = FIREWORK_THEMES[key];
+        if (categoryFilter !== 'all' && theme.category !== categoryFilter) return;
+
+        const btn = document.createElement('button');
+        btn.setAttribute('data-theme-key', key);
+        btn.title = `${theme.name} — ${theme.vibe}`;
+        btn.className = 'preset-btn w-full p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-slate-800 flex items-center justify-between gap-2 text-left transition';
+
+        btn.innerHTML = `
+          <div class="min-w-0 flex-1">
+            <div class="text-[11px] font-semibold text-slate-100 truncate">${theme.name}</div>
+            <div class="text-[10px] text-slate-400 truncate">${theme.vibe}</div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0 bg-slate-950/90 p-1.5 rounded-lg border border-slate-800">
+            <span class="w-3 h-3 rounded-full border border-white/25" style="background:${theme.flash}" title="Flash: ${theme.flash}"></span>
+            <span class="w-3 h-3 rounded-full border border-white/25" style="background:${theme.primary}" title="Primary: ${theme.primary}"></span>
+            <span class="w-3 h-3 rounded-full border border-white/25" style="background:${theme.secondary}" title="Secondary: ${theme.secondary}"></span>
+            <span class="w-3 h-3 rounded-full border border-white/25" style="background:${theme.sparks}" title="Sparks: ${theme.sparks}"></span>
+          </div>
+        `;
+
+        btn.addEventListener('click', () => applyThemeByKey(key, true));
+        containerEl.appendChild(btn);
+      });
+
+      highlightActivePresetButton(CONFIG.activeThemeKey);
+    }
+
+    document.getElementById('sel-theme-category').addEventListener('change', (e) => {
+      renderThemePresets(e.target.value);
+    });
+
+    function bindColorPicker(inputId, hexId, configKey) {
+      const inp = document.getElementById(inputId);
+      const hex = document.getElementById(hexId);
+      inp.addEventListener('input', () => {
+        CONFIG[configKey] = inp.value.toUpperCase();
+        CONFIG.primaryAltColor = null;
+        CONFIG.secondaryAltColor = null;
+        hex.textContent = inp.value.toUpperCase();
+        CONFIG.autoCyclePalettes = false;
+        document.getElementById('chk-random-palette').checked = false;
+        document.getElementById('active-theme-name').textContent = 'Custom User Palette';
+        document.getElementById('active-theme-category').textContent = 'Manual Override';
+      });
+    }
+    bindColorPicker('col-flash', 'hex-flash', 'flashColor');
+    bindColorPicker('col-primary', 'hex-primary', 'primaryColor');
+    bindColorPicker('col-secondary', 'hex-secondary', 'secondaryColor');
+    bindColorPicker('col-spark', 'hex-spark', 'sparkColor');
+
+    renderThemePresets('all');
+
+    // Audio Mute Toggle Sync
+    const chkSound = document.getElementById('chk-sound');
+    const iconAudioOn = document.getElementById('icon-audio-on');
+    const iconAudioOff = document.getElementById('icon-audio-off');
+
+    function setSoundEnabled(enabled) {
+      CONFIG.soundEnabled = enabled;
+      chkSound.checked = enabled;
+      iconAudioOn.classList.toggle('hidden', !enabled);
+      iconAudioOff.classList.toggle('hidden', enabled);
+      sound.updateVolume();
+    }
+    chkSound.addEventListener('change', (e) => setSoundEnabled(e.target.checked));
+    document.getElementById('btn-audio-toggle').addEventListener('click', () => {
+      sound.init();
+      setSoundEnabled(!CONFIG.soundEnabled);
+    });
+
+    // Action Buttons
+    document.getElementById('btn-quick-launch').addEventListener('click', () => {
+      sound.init();
+      fireworks.launchRocket();
+    });
+    document.getElementById('btn-finale-top').addEventListener('click', () => {
+      sound.init();
+      fireworks.triggerGrandFinale();
+    });
+    document.getElementById('btn-finale-bottom').addEventListener('click', () => {
+      sound.init();
+      fireworks.triggerGrandFinale();
+    });
+    document.getElementById('btn-reset-camera').addEventListener('click', () => {
+      camera.position.copy(DEFAULT_CAM_POS);
+      controls.target.copy(DEFAULT_CAM_TARGET);
+      controls.update();
+    });
+
+    // Studio Panel Drawer Toggle
+    const controlPanel = document.getElementById('control-panel');
+    let panelVisible = window.innerWidth >= 768;
+    function updatePanelVisibility() {
+      if (panelVisible) {
+        controlPanel.classList.remove('translate-x-[110%]', 'opacity-0', 'pointer-events-none');
+      } else {
+        controlPanel.classList.add('translate-x-[110%]', 'opacity-0', 'pointer-events-none');
+      }
+    }
+    updatePanelVisibility();
+
+    document.getElementById('btn-toggle-panel').addEventListener('click', () => {
+      panelVisible = !panelVisible;
+      updatePanelVisibility();
+    });
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        sound.init();
+        fireworks.launchRocket();
+      } else if (e.code === 'KeyF') {
+        sound.init();
+        fireworks.triggerGrandFinale();
+      } else if (e.code === 'KeyH') {
+        panelVisible = !panelVisible;
+        updatePanelVisibility();
+      } else if (e.code === 'KeyM') {
+        setSoundEnabled(!CONFIG.soundEnabled);
+      }
+    });
+
+    // Responsive Window Resize
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      composer.setSize(w, h);
+      bloomPass.resolution.set(w, h);
+    });
+
+    /* ==========================================================================
+       9. MAIN 60 FPS ANIMATION & TELEMETRY LOOP
+       ========================================================================== */
+    const hudFps = document.getElementById('hud-fps');
+    const hudShells = document.getElementById('hud-shells');
+    const hudParticles = document.getElementById('hud-particles');
+
+    let lastTime = performance.now();
+    let autoLaunchTimer = 0;
+    let frameCount = 0;
+    let fpsAccum = 0;
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
+      const elapsedTime = now * 0.001;
+
+      controls.update();
+
+      // Auto-Show Choreography Spawner
+      if (CONFIG.autoShow) {
+        autoLaunchTimer += dt;
+        const interval = 1.0 / CONFIG.launchFrequency;
+        if (autoLaunchTimer >= interval) {
+          autoLaunchTimer = 0;
+          fireworks.launchRocket();
+          if (Math.random() < 0.22) {
+            setTimeout(() => fireworks.launchRocket(), 140);
+          }
+        }
+      }
+
+      fireworks.update(dt, elapsedTime);
+      starMat.uniforms.uTime.value = elapsedTime;
+      waterMat.uniforms.uTime.value = elapsedTime;
+
+      composer.render();
+
+      frameCount++;
+      fpsAccum += dt;
+      if (fpsAccum >= 0.25) {
+        const fps = Math.round(frameCount / fpsAccum);
+        hudFps.textContent = fps;
+        hudShells.textContent = fireworks.rockets.length;
+        hudParticles.textContent = fireworks.activeSparkCount.toLocaleString();
+        frameCount = 0;
+        fpsAccum = 0;
+      }
+    }
+
+    window.onload = () => {
+      fireworks.launchRocket(new THREE.Vector3(-28, 68, 0), 'chrysanthemum');
+      setTimeout(() => fireworks.launchRocket(new THREE.Vector3(28, 68, 0), 'saturn'), 220);
+      setTimeout(() => fireworks.launchRocket(new THREE.Vector3(0, 82, -10), 'willow'), 450);
+      requestAnimationFrame(animate);
+    };
+  </script>
+</body>
+</html>
